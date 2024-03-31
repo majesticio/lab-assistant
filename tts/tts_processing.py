@@ -1,4 +1,4 @@
-from tts_handler import TTSHandler
+from .tts_handler import TTSHandler
 
 def process_tts(tts_queue, speaker_queue):
     """Process sentences from the TTS queue and send the generated audio file paths to the speaker queue."""

@@ -1,12 +1,14 @@
 import os
 import whisper
 from datetime import datetime
+from dotenv import load_dotenv
 
-# Define the default model name here; you can adjust it based on your needs.
-MODEL_NAME = "small"
+load_dotenv()
+
+whisper_model = os.getenv('WHISPER_MODEL')
 
 class TranscriptionHandler:
-    def __init__(self, model_name=MODEL_NAME, recordings_folder="recordings"):
+    def __init__(self, model_name=whisper_model, recordings_folder="recordings"):
         self.model = whisper.load_model(model_name)
         self.recordings_folder = recordings_folder
 

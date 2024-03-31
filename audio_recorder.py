@@ -9,6 +9,13 @@ import itertools
 import wave
 import pyloudnorm as pyln
 
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+record_button = os.getenv('RECORD_BUTTON')
+
 class AudioNormalizer:
     """Handles audio normalization in various modes."""
     def __init__(self, mode='lufs', samplerate=44100):
@@ -76,14 +83,14 @@ class AudioRecorder:
 
     def record_audio(self):
         print("Press Ctrl+C anytime to stop the program.")
-        print("\nPress and hold the space bar to start recording. Release to stop.")
+        print(f"\nPress and hold the {record_button} to start recording. Release to stop.")
         while True:
             try:
-                keyboard.wait('space')
+                keyboard.wait(record_button)
                 print("\nRecording started...")
                 self.frames = []
                 with sd.InputStream(callback=self.callback, samplerate=self.samplerate, channels=self.channels, dtype='float32'):
-                    while keyboard.is_pressed('space'):
+                    while keyboard.is_pressed(record_button):
                         sd.sleep(100)
                 print("\nRecording stopped.")
                 self.save_recording()

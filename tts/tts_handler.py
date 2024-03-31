@@ -4,8 +4,14 @@ from datetime import datetime
 from TTS.api import TTS
 import torch
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+tts_model = os.getenv('TTS_MODEL')
+
 class TTSHandler:
-    def __init__(self, model_name="tts_models/en/jenny/jenny", wav_dir="speaker/"):
+    def __init__(self, model_name=tts_model, wav_dir="speaker/"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tts_engine = TTS(model_name=model_name, progress_bar=True).to(self.device)
         self.wav_dir = wav_dir

@@ -1,67 +1,20 @@
 .
 ├── audio
-├── audio_playback.py
+│   └── audio_playback.py
 ├── audio_recorder.py
 ├── chat
-├── chat_processing.py
+│   ├── chat_processing.py
+│   ├── sentence_streamer.py
+│   └── transcription_handler.py
 ├── main.py
 ├── recordings
 ├── requirements.txt
-├── sentence_streamer.py
 ├── speaker
-├── transcription_handler.py
-├── tts
-├── tts_handler.py
-└── tts_processing.py
+└── tts
+    ├── tts_handler.py
+    └── tts_processing.py
 
 6 directories, 9 files
-
-## ./chat_processing.py
-```python
-def process_transcription_to_chat(client, transcription_queue, streamer):
-    """Process transcriptions and send them to the chat API."""
-    history = []
-
-    while True:
-        transcription = transcription_queue.get()
-
-        user_msg = {"role": "user", "content": transcription}
-        history.append(user_msg)
-
-        # Chat API call
-        try:
-            completion = client.chat.completions.create(
-                model="mixtral",
-                messages=history,
-                temperature=0.7,
-                stream=True
-            )
-            for chunk in completion:
-                if chunk.choices[0].delta.content:
-                    # Directly feed chunks from chat API response to the SentenceStreamer
-                    streamer.process_text_chunk(chunk.choices[0].delta.content)
-        except Exception as e:
-            print(f"Error during chat interaction: {e}")
-
-        transcription_queue.task_done()
-```
-
-## ./tts_processing.py
-```python
-from tts_handler import TTSHandler
-
-def process_tts(tts_queue, speaker_queue):
-    """Process sentences from the TTS queue and send the generated audio file paths to the speaker queue."""
-    tts_handler = TTSHandler(wav_dir="speaker")
-
-    while True:
-        sentence = tts_queue.get()
-        audio_file_path = tts_handler.text_to_speech(sentence)
-        if audio_file_path:
-            print(f"Generated audio file: {audio_file_path}")
-            speaker_queue.put(audio_file_path)
-        tts_queue.task_done()
-```
 
 ## ./audio_recorder.py
 ```python
@@ -190,94 +143,6 @@ if __name__ == "__main__":
     threading.Thread(target=recorder.record_audio(), daemon=True).start()
 ```
 
-## ./sentence_streamer.py
-```python
-# app/sentence_streamer.py
-class SentenceStreamer:
-    def __init__(self):
-        self.buffer = ""  # Initialize the buffer for holding streamed text
-
-    def process_text_chunk(self, text_chunk):
-        """Process a chunk of text, update the buffer, and add complete sentences for publishing."""
-        self.buffer += text_chunk
-        self._process_buffer()
-
-    def _process_buffer(self):
-        """Process the buffer to extract complete sentences and publish them."""
-        i = 0
-        while i < len(self.buffer):
-            if self.buffer[i] in ".!?" and (i + 1 == len(self.buffer) or self.buffer[i + 1].isspace()):
-                if i > 0 and (self.buffer[i - 1].isdigit() or (self.buffer[i - 1].isupper() and (i == 1 or self.buffer[i - 2].isspace()))):
-                    i += 1
-                    continue
-                if i > 2 and self.buffer[i - 1] == '.' and self.buffer[i - 2].isupper() and self.buffer[i - 3] == ' ':
-                    i += 1
-                    continue
-                sentence = self.buffer[:i + 1].strip()
-                if sentence:
-                    self.publish_function(sentence)  # Publish the sentence directly
-                self.buffer = self.buffer[i + 1:].lstrip()
-                i = 0
-            else:
-                i += 1
-
-```
-
-## ./audio_playback.py
-```python
-import os
-import sounddevice as sd
-import soundfile as sf
-
-def playback_audio_files(speaker_queue):
-    """Playback audio files from the speaker queue."""
-    while True:
-        audio_file_path = speaker_queue.get()
-        print(f"Playing audio file: {audio_file_path}")
-        try:
-            data, fs = sf.read(audio_file_path, dtype='float32')
-            sd.play(data, fs, blocking=True)
-            print(f"Playback completed for: {audio_file_path}")
-            os.remove(audio_file_path)
-            print(f"Removed file: {audio_file_path}")
-        except Exception as e:
-            print(f"Failed to play back audio file {audio_file_path}: {e}")
-        speaker_queue.task_done()
-```
-
-## ./transcription_handler.py
-```python
-import os
-import whisper
-from datetime import datetime
-
-# Define the default model name here; you can adjust it based on your needs.
-MODEL_NAME = "small"
-
-class TranscriptionHandler:
-    def __init__(self, model_name=MODEL_NAME, recordings_folder="recordings"):
-        self.model = whisper.load_model(model_name)
-        self.recordings_folder = recordings_folder
-
-        # Ensure recordings directory exists
-        os.makedirs(self.recordings_folder, exist_ok=True)
-
-    def transcribe_file(self, file_path):
-        if not os.path.isfile(file_path):
-            print(f"Attempted file path: {file_path}")
-            print("File does not exist.")
-            return None
-
-        try:
-            print(f"Transcribing: {file_path}")
-            result = self.model.transcribe(file_path, fp16=False)
-            transcription = result['text']
-            return transcription
-        except Exception as e:
-            print(f"Error during transcription: {e}")
-            return None
-```
-
 ## ./main.py
 ```python
 import threading
@@ -285,12 +150,12 @@ import time
 import queue
 import os
 from openai import OpenAI
-from sentence_streamer import SentenceStreamer
-from transcription_handler import TranscriptionHandler
-from tts_handler import TTSHandler
-from audio_playback import playback_audio_files
-from chat_processing import process_transcription_to_chat
-from tts_processing import process_tts
+from chat.sentence_streamer import SentenceStreamer
+from chat.transcription_handler import TranscriptionHandler
+from tts.tts_handler import TTSHandler
+from audio.audio_playback import playback_audio_files
+from chat.chat_processing import process_transcription_to_chat
+from tts.tts_processing import process_tts
 
 # Initialize OpenAI client
 client = OpenAI(base_url="http://10.200.200.1:1234/v1", api_key="not-needed")
@@ -332,7 +197,49 @@ if __name__ == "__main__":
     main()
 ```
 
-## ./tts_handler.py
+## ./requirements.txt
+```python
+fastapi
+uvicorn
+pika
+pydantic
+python-dotenv
+TTS
+openai
+
+# old requirements
+sounddevice
+numpy
+keyboard
+python-dotenv
+pyloudnorm
+aiofiles
+# whisper
+openai-whisper @ git+https://github.com/openai/whisper.git@0a60fcaa9b86748389a656aa013c416030287d47
+pydantic-settings
+python-multipart
+gradio
+
+```
+
+## ./tts/tts_processing.py
+```python
+from .tts_handler import TTSHandler
+
+def process_tts(tts_queue, speaker_queue):
+    """Process sentences from the TTS queue and send the generated audio file paths to the speaker queue."""
+    tts_handler = TTSHandler(wav_dir="speaker")
+
+    while True:
+        sentence = tts_queue.get()
+        audio_file_path = tts_handler.text_to_speech(sentence)
+        if audio_file_path:
+            print(f"Generated audio file: {audio_file_path}")
+            speaker_queue.put(audio_file_path)
+        tts_queue.task_done()
+```
+
+## ./tts/tts_handler.py
 ```python
 # app/tts_handler.py
 import os
@@ -361,27 +268,120 @@ class TTSHandler:
             return None
 ```
 
-## ./requirements.txt
+## ./chat/chat_processing.py
 ```python
-fastapi
-uvicorn
-pika
-pydantic
-python-dotenv
-TTS
-openai
+def process_transcription_to_chat(client, transcription_queue, streamer):
+    """Process transcriptions and send them to the chat API."""
+    history = []
 
-# old requirements
-sounddevice
-numpy
-keyboard
-python-dotenv
-pyloudnorm
-aiofiles
-# whisper
-openai-whisper @ git+https://github.com/openai/whisper.git@0a60fcaa9b86748389a656aa013c416030287d47
-pydantic-settings
-python-multipart
-gradio
+    while True:
+        transcription = transcription_queue.get()
 
+        user_msg = {"role": "user", "content": transcription}
+        history.append(user_msg)
+
+        # Chat API call
+        try:
+            completion = client.chat.completions.create(
+                model="mixtral",
+                messages=history,
+                temperature=0.7,
+                stream=True
+            )
+            for chunk in completion:
+                if chunk.choices[0].delta.content:
+                    # Directly feed chunks from chat API response to the SentenceStreamer
+                    streamer.process_text_chunk(chunk.choices[0].delta.content)
+        except Exception as e:
+            print(f"Error during chat interaction: {e}")
+
+        transcription_queue.task_done()
+```
+
+## ./chat/sentence_streamer.py
+```python
+# app/sentence_streamer.py
+class SentenceStreamer:
+    def __init__(self, sentence_queue=None):
+        self.buffer = ""  # Initialize the buffer for holding streamed text
+        self.sentence_queue = sentence_queue
+
+    def process_text_chunk(self, text_chunk):
+        """Process a chunk of text, update the buffer, and add complete sentences for publishing."""
+        self.buffer += text_chunk
+        self._process_buffer()
+
+    def _process_buffer(self):
+        """Process the buffer to extract complete sentences and publish them."""
+        i = 0
+        while i < len(self.buffer):
+            if self.buffer[i] in ".!?" and (i + 1 == len(self.buffer) or self.buffer[i + 1].isspace()):
+                if i > 0 and (self.buffer[i - 1].isdigit() or (self.buffer[i - 1].isupper() and (i == 1 or self.buffer[i - 2].isspace()))):
+                    i += 1
+                    continue
+                if i > 2 and self.buffer[i - 1] == '.' and self.buffer[i - 2].isupper() and self.buffer[i - 3] == ' ':
+                    i += 1
+                    continue
+                sentence = self.buffer[:i + 1].strip()
+                if sentence and self.sentence_queue:
+                    self.sentence_queue.put(sentence)  # Enqueue the sentence for TTS processing
+                self.buffer = self.buffer[i + 1:].lstrip()
+                i = 0
+            else:
+                i += 1
+```
+
+## ./chat/transcription_handler.py
+```python
+import os
+import whisper
+from datetime import datetime
+
+# Define the default model name here; you can adjust it based on your needs.
+MODEL_NAME = "small"
+
+class TranscriptionHandler:
+    def __init__(self, model_name=MODEL_NAME, recordings_folder="recordings"):
+        self.model = whisper.load_model(model_name)
+        self.recordings_folder = recordings_folder
+
+        # Ensure recordings directory exists
+        os.makedirs(self.recordings_folder, exist_ok=True)
+
+    def transcribe_file(self, file_path):
+        if not os.path.isfile(file_path):
+            print(f"Attempted file path: {file_path}")
+            print("File does not exist.")
+            return None
+
+        try:
+            print(f"Transcribing: {file_path}")
+            result = self.model.transcribe(file_path, fp16=False)
+            transcription = result['text']
+            return transcription
+        except Exception as e:
+            print(f"Error during transcription: {e}")
+            return None
+```
+
+## ./audio/audio_playback.py
+```python
+import os
+import sounddevice as sd
+import soundfile as sf
+
+def playback_audio_files(speaker_queue):
+    """Playback audio files from the speaker queue."""
+    while True:
+        audio_file_path = speaker_queue.get()
+        print(f"Playing audio file: {audio_file_path}")
+        try:
+            data, fs = sf.read(audio_file_path, dtype='float32')
+            sd.play(data, fs, blocking=True)
+            print(f"Playback completed for: {audio_file_path}")
+            os.remove(audio_file_path)
+            print(f"Removed file: {audio_file_path}")
+        except Exception as e:
+            print(f"Failed to play back audio file {audio_file_path}: {e}")
+        speaker_queue.task_done()
 ```
