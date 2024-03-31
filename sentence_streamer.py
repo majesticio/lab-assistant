@@ -1,7 +1,8 @@
 # app/sentence_streamer.py
 class SentenceStreamer:
-    def __init__(self):
+    def __init__(self, sentence_queue=None):
         self.buffer = ""  # Initialize the buffer for holding streamed text
+        self.sentence_queue = sentence_queue
 
     def process_text_chunk(self, text_chunk):
         """Process a chunk of text, update the buffer, and add complete sentences for publishing."""
@@ -20,8 +21,8 @@ class SentenceStreamer:
                     i += 1
                     continue
                 sentence = self.buffer[:i + 1].strip()
-                if sentence:
-                    self.publish_function(sentence)  # Publish the sentence directly
+                if sentence and self.sentence_queue:
+                    self.sentence_queue.put(sentence)  # Enqueue the sentence for TTS processing
                 self.buffer = self.buffer[i + 1:].lstrip()
                 i = 0
             else:

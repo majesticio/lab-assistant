@@ -1,6 +1,8 @@
 .
+├── audio
 ├── audio_playback.py
 ├── audio_recorder.py
+├── chat
 ├── chat_processing.py
 ├── main.py
 ├── recordings
@@ -8,10 +10,11 @@
 ├── sentence_streamer.py
 ├── speaker
 ├── transcription_handler.py
+├── tts
 ├── tts_handler.py
 └── tts_processing.py
 
-3 directories, 9 files
+6 directories, 9 files
 
 ## ./chat_processing.py
 ```python
@@ -191,9 +194,8 @@ if __name__ == "__main__":
 ```python
 # app/sentence_streamer.py
 class SentenceStreamer:
-    def __init__(self, sentence_queue=None):
+    def __init__(self):
         self.buffer = ""  # Initialize the buffer for holding streamed text
-        self.sentence_queue = sentence_queue
 
     def process_text_chunk(self, text_chunk):
         """Process a chunk of text, update the buffer, and add complete sentences for publishing."""
@@ -212,8 +214,8 @@ class SentenceStreamer:
                     i += 1
                     continue
                 sentence = self.buffer[:i + 1].strip()
-                if sentence and self.sentence_queue:
-                    self.sentence_queue.put(sentence)  # Enqueue the sentence for TTS processing
+                if sentence:
+                    self.publish_function(sentence)  # Publish the sentence directly
                 self.buffer = self.buffer[i + 1:].lstrip()
                 i = 0
             else:
@@ -253,13 +255,11 @@ from datetime import datetime
 MODEL_NAME = "small"
 
 class TranscriptionHandler:
-    def __init__(self, model_name=MODEL_NAME, recordings_folder="recordings", transcriptions_folder="transcriptions"):
+    def __init__(self, model_name=MODEL_NAME, recordings_folder="recordings"):
         self.model = whisper.load_model(model_name)
         self.recordings_folder = recordings_folder
-        self.transcriptions_folder = transcriptions_folder
 
-        # Ensure transcriptions and recordings directories exist
-        os.makedirs(self.transcriptions_folder, exist_ok=True)
+        # Ensure recordings directory exists
         os.makedirs(self.recordings_folder, exist_ok=True)
 
     def transcribe_file(self, file_path):
@@ -272,32 +272,18 @@ class TranscriptionHandler:
             print(f"Transcribing: {file_path}")
             result = self.model.transcribe(file_path, fp16=False)
             transcription = result['text']
-            self.save_transcription(file_path, transcription)
-            
-            # os.remove(file_path)
-            # print(f"Original file removed: {file_path}")
-            
             return transcription
         except Exception as e:
             print(f"Error during transcription: {e}")
             return None
-
-    def save_transcription(self, original_file_path, text):
-        base_file_name = os.path.basename(original_file_path).replace('.wav', '')
-        transcription_file_name = f"transcription_{base_file_name}.txt"
-        file_path = os.path.join(self.transcriptions_folder, transcription_file_name)
-        with open(file_path, 'w') as file:
-            file.write(text)
-        print(f"Transcription saved to {file_path}")
-
-
 ```
 
 ## ./main.py
 ```python
 import threading
-import os
 import time
+import queue
+import os
 from openai import OpenAI
 from sentence_streamer import SentenceStreamer
 from transcription_handler import TranscriptionHandler
@@ -305,7 +291,7 @@ from tts_handler import TTSHandler
 from audio_playback import playback_audio_files
 from chat_processing import process_transcription_to_chat
 from tts_processing import process_tts
-import queue
+
 # Initialize OpenAI client
 client = OpenAI(base_url="http://10.200.200.1:1234/v1", api_key="not-needed")
 
