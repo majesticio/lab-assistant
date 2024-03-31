@@ -1,0 +1,27 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+fastapi = "*"
+uvicorn = "*"
+pika = "*"
+pydantic = "*"
+python-dotenv = "*"
+tts = "*"
+openai = "*"
+sounddevice = "*"
+numpy = "*"
+keyboard = "*"
+pyloudnorm = "*"
+aiofiles = "*"
+openai-whisper = {ref = "0a60fcaa9b86748389a656aa013c416030287d47", git = "git+https://github.com/openai/whisper.git"}
+pydantic-settings = "*"
+python-multipart = "*"
+gradio = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"
