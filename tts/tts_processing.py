@@ -8,6 +8,6 @@ def process_tts(tts_queue, speaker_queue):
         sentence = tts_queue.get()
         audio_file_path = tts_handler.text_to_speech(sentence)
         if audio_file_path:
-            print(f"Generated audio file: {audio_file_path}")
+            # print(f"Generated audio file: {audio_file_path}")
             speaker_queue.put(audio_file_path)
         tts_queue.task_done()

@@ -22,7 +22,7 @@ class TranscriptionHandler:
             return None
 
         try:
-            print(f"Transcribing: {file_path}")
+            # print(f"Transcribing: {file_path}")
             result = self.model.transcribe(file_path, fp16=False)
             transcription = result['text']
             return transcription

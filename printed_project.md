@@ -29,6 +29,13 @@ import itertools
 import wave
 import pyloudnorm as pyln
 
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+record_button = os.getenv('RECORD_BUTTON')
+
 class AudioNormalizer:
     """Handles audio normalization in various modes."""
     def __init__(self, mode='lufs', samplerate=44100):
@@ -96,14 +103,14 @@ class AudioRecorder:
 
     def record_audio(self):
         print("Press Ctrl+C anytime to stop the program.")
-        print("\nPress and hold the space bar to start recording. Release to stop.")
+        print(f"\nPress and hold the {record_button} to start recording. Release to stop.")
         while True:
             try:
-                keyboard.wait('space')
+                keyboard.wait(record_button)
                 print("\nRecording started...")
                 self.frames = []
                 with sd.InputStream(callback=self.callback, samplerate=self.samplerate, channels=self.channels, dtype='float32'):
-                    while keyboard.is_pressed('space'):
+                    while keyboard.is_pressed(record_button):
                         sd.sleep(100)
                 print("\nRecording stopped.")
                 self.save_recording()
@@ -149,16 +156,12 @@ import threading
 import time
 import queue
 import os
-from openai import OpenAI
+
 from chat.sentence_streamer import SentenceStreamer
 from chat.transcription_handler import TranscriptionHandler
-from tts.tts_handler import TTSHandler
 from audio.audio_playback import playback_audio_files
 from chat.chat_processing import process_transcription_to_chat
 from tts.tts_processing import process_tts
-
-# Initialize OpenAI client
-client = OpenAI(base_url="http://10.200.200.1:1234/v1", api_key="not-needed")
 
 # Initialize queues
 transcription_queue = queue.Queue()
@@ -172,7 +175,7 @@ def main():
     transcription_handler = TranscriptionHandler()
 
     # Threads for processing chat responses to sentences, converting sentences to TTS, and playback
-    threading.Thread(target=process_transcription_to_chat, args=(client, transcription_queue, streamer), daemon=True).start()
+    threading.Thread(target=process_transcription_to_chat, args=(transcription_queue, streamer), daemon=True).start()
     threading.Thread(target=process_tts, args=(tts_queue, speaker_queue), daemon=True).start()
     threading.Thread(target=playback_audio_files, args=(speaker_queue,), daemon=True).start()
 
@@ -181,17 +184,18 @@ def main():
             for file_name in os.listdir(transcription_handler.recordings_folder):
                 if file_name.endswith(".wav"):
                     file_path = os.path.join(transcription_handler.recordings_folder, file_name)
-                    print(f"Transcribing file: {file_path}")
+                    # print(f"Transcribing file: {file_path}")
                     transcription = transcription_handler.transcribe_file(file_path)
                     if transcription:
                         print(f"Transcription: {transcription}")
                         transcription_queue.put(transcription)
                         os.remove(file_path)
-                        print(f"Removed file: {file_path}")
-            time.sleep(1)
+                        # print(f"Removed file: {file_path}")
+            time.sleep(0.5)
         except KeyboardInterrupt:
             print("Program interrupted by user. Exiting...")
             break
+
 
 if __name__ == "__main__":
     main()
@@ -234,7 +238,7 @@ def process_tts(tts_queue, speaker_queue):
         sentence = tts_queue.get()
         audio_file_path = tts_handler.text_to_speech(sentence)
         if audio_file_path:
-            print(f"Generated audio file: {audio_file_path}")
+            # print(f"Generated audio file: {audio_file_path}")
             speaker_queue.put(audio_file_path)
         tts_queue.task_done()
 ```
@@ -247,8 +251,14 @@ from datetime import datetime
 from TTS.api import TTS
 import torch
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+tts_model = os.getenv('TTS_MODEL')
+
 class TTSHandler:
-    def __init__(self, model_name="tts_models/en/jenny/jenny", wav_dir="speaker/"):
+    def __init__(self, model_name=tts_model, wav_dir="speaker/"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tts_engine = TTS(model_name=model_name, progress_bar=True).to(self.device)
         self.wav_dir = wav_dir
@@ -270,9 +280,40 @@ class TTSHandler:
 
 ## ./chat/chat_processing.py
 ```python
-def process_transcription_to_chat(client, transcription_queue, streamer):
+
+from dotenv import load_dotenv
+import json
+import os
+
+from openai import OpenAI
+
+load_dotenv()
+
+# Access environment variables
+base_url = os.getenv('BASE_URL')
+api_key = os.getenv('API_KEY')
+history_path = os.getenv('HISTORY_PATH')
+system_msg = os.getenv("SYSTEM_MSG")
+model_name = os.getenv('MODEL_NAME')
+
+# Initialize OpenAI client
+client = OpenAI(base_url=base_url, api_key=api_key)
+
+# Load or create history
+if os.path.exists(history_path):
+    with open(history_path, 'r') as file:
+        history = json.load(file)
+else:
+    history = [
+        {"role": "system", "content": system_msg },
+        {"role": "user", "content": "Please respond with only one or two sentences when possible." },
+        {"role": "assistant", "content": "I am at your service, that would be my pleasure." },
+
+    ]
+
+
+def process_transcription_to_chat(transcription_queue, streamer):
     """Process transcriptions and send them to the chat API."""
-    history = []
 
     while True:
         transcription = transcription_queue.get()
@@ -283,17 +324,28 @@ def process_transcription_to_chat(client, transcription_queue, streamer):
         # Chat API call
         try:
             completion = client.chat.completions.create(
-                model="mixtral",
+                model=model_name,
                 messages=history,
                 temperature=0.7,
                 stream=True
             )
+            
+            response = {"role": "assistant", "content": ""}
+    
             for chunk in completion:
                 if chunk.choices[0].delta.content:
+                    text_chunk = chunk.choices[0].delta.content
                     # Directly feed chunks from chat API response to the SentenceStreamer
-                    streamer.process_text_chunk(chunk.choices[0].delta.content)
+                    response["content"] += text_chunk
+                    streamer.process_text_chunk(text_chunk)
+            
+            history.append(response)
         except Exception as e:
             print(f"Error during chat interaction: {e}")
+        finally:
+        # Write the history to the history_path before exiting
+            with open(history_path, 'w') as file:
+                json.dump(history, file)
 
         transcription_queue.task_done()
 ```
@@ -336,12 +388,14 @@ class SentenceStreamer:
 import os
 import whisper
 from datetime import datetime
+from dotenv import load_dotenv
 
-# Define the default model name here; you can adjust it based on your needs.
-MODEL_NAME = "small"
+load_dotenv()
+
+whisper_model = os.getenv('WHISPER_MODEL')
 
 class TranscriptionHandler:
-    def __init__(self, model_name=MODEL_NAME, recordings_folder="recordings"):
+    def __init__(self, model_name=whisper_model, recordings_folder="recordings"):
         self.model = whisper.load_model(model_name)
         self.recordings_folder = recordings_folder
 
@@ -355,7 +409,7 @@ class TranscriptionHandler:
             return None
 
         try:
-            print(f"Transcribing: {file_path}")
+            # print(f"Transcribing: {file_path}")
             result = self.model.transcribe(file_path, fp16=False)
             transcription = result['text']
             return transcription
